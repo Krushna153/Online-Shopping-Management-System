@@ -1,0 +1,452 @@
+DATABASE MANAGEENT SYSTEM (DBMS) PROJECT
+
+insert into order1(order_date, cust_id, cust_add) values('2000-1-1', 123, 'abcd')$
+insert into order1(order_date, cust_id, cust_add) values('2001-1-2', 2, 'hfdgf')$
+
+
+(1)
+
+Delimiter $
+drop procedure insert_order_detail$
+create procedure insert_order_detail(in order_id int,in pid int,in qty int)
+	begin
+	declare prod_total_price,prod_final_price,price, order_total_price double;
+	declare discount float;
+	declare id int;
+	declare b int;
+
+	declare cur1 cursor for select prod_id, prod_price from product where prod_id = pid;
+	declare continue handler for not found set b = 1;
+	set order_total_price = 0;
+	open cur1;
+	set b = 0;
+
+	fetch cur1 into id, price;
+	while b = 0 do
+
+		set prod_total_price = price*qty;
+		insert into order_detail values(order_id, pid, qty, price, prod_total_price);
+		fetch cur1 into id,price;
+	end while;
+        
+	close cur1;
+	
+end$ 
+
+call insert_order_detail(19, 2, 2)$
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+(2)
+
+delimiter $
+drop trigger err_ins1$
+create trigger err_ins1 after insert on order_detail
+for each row
+begin    
+	
+	declare c_id int;
+		
+     	update order1 set total_amt = total_amt + new.prod_total_price where order_id=new.order_id;
+     	update product set prod_qty = prod_qty - new.prod_qty where prod_id = new.prod_id;
+
+	select cust_id into c_id from order1 where order1.order_id = new.order_id;
+
+     	call manage_shopping_cart(new.prod_id, c_id);
+end$
+
+call insert_order_detail(20,1,1)$	
+
+select * from bill_detail$
+---------------------------------------------------------------------------------------------------------------------------------
+
+(3)
+
+Delimiter $
+drop procedure generate_bill$
+create procedure generate_bill(in oid int, in i int)
+     begin
+     declare b,o_id,b_date,day,month,c_id,pid,pqty , out_value int;
+     declare disc float;
+     declare btp,pprice,ptotal_price,t_amt double;
+     declare c_name varchar(20);
+    
+     declare cur1 cursor for select prod_id,prod_qty,prod_price,prod_total_price from order_detail where oid = order_id;
+     declare continue handler for not found set b = 1;
+     open cur1;
+     set b = 0;
+	
+     set i = i + 1;
+     #set out_value = @i;
+     #select out_value;
+
+     fetch cur1 into pid,pqty,pprice,ptotal_price;
+     while b = 0 do
+    
+     select cust_id into c_id from order1 where oid = order1.order_id;
+    
+     select cust_name into c_name from customer where c_id = cust_id;
+    
+     select total_amt into t_amt from order1 where oid = order_id;
+    
+     insert into bill_detail(bill_id,cust_id, order_id, cust_name, prod_id, prod_qty, prod_price, prod_total_price,
+          order_total_price) values(i,c_id, oid, c_name, pid, pqty,pprice,ptotal_price, t_amt);
+    
+         select order_date into b_date from order1 where oid = order1.order_id;
+    
+             update bill_detail set bill_date = b_date where oid = order_id;
+    
+     set day = extract(day from(b_date));
+     set month = extract(month from(b_date));
+    
+     if day = 15 and month = 8 then
+     set disc = 10.0;
+     elseif day > 24 and day < 28 and month = 10 then
+     set disc = 15.0;
+     elseif day = 14 and month = 1 then
+     set disc = 20.0;
+     else
+     set disc = 5.0;
+     end if;
+    
+     update bill_detail set offer_disc = disc where oid = order_id;
+    
+     set btp = t_amt - (((t_amt)*disc)/100);
+      update bill_detail set bill_total_price = btp where oid = order_id;
+    
+     fetch cur1 into pid,pqty,pprice,ptotal_price;
+     end while;
+     close cur1;
+
+     select * from bill_detail where oid = order_id;
+    
+     end$
+
+call generate_bill(20, 1)$
+---------------------------------------------------------------------------------------------------------------------------------
+
+(4)
+
+Delimiter $
+drop procedure year_wise_order_detail$
+create procedure year_wise_order_detail(year year)
+begin
+	select year;
+	#select * from order1 where year = extract(year from order1.order_date);
+	select o.order_id, o.order_date, o.cust_id, o.cust_add, od.prod_id, od.prod_qty, od.prod_price,
+		od.prod_total_price, o.total_amt from order1 o inner join order_detail od
+		 on o.order_id = od.order_id and year = extract(year from o.order_date) ;
+end$
+
+call year_wise_order_detail(2000)$
+
+--------------------------------------------------------------------------------------------------------------------------------------
+
+(5)
+
+delimiter $
+drop trigger err_ins2$
+create trigger err_ins2 before insert on order_detail
+for each row
+begin
+    
+	declare msg varchar(128);
+  	declare p_qty int;
+
+	select distinctrow product.prod_qty into p_qty from product inner join order_detail on new.prod_id = product.prod_id; 
+    	#set pid = select prod_id from product where prod_id = new.prod_id;
+    	if p_qty < new.prod_qty then
+       		set msg = 'Not enough quantity.....';
+	elseif new.prod_qty < 0 then
+		set msg = 'Quantity can not be negative.....';
+	end if;
+       		signal sqlstate '45001' set message_text = msg; 
+end$
+
+-------------------------------------------------------------------------------------------------------------------------------------
+
+(6)
+
+Delimiter $
+drop function day_wise_cnt_order$
+create function day_wise_cnt_order(date date) returns int
+begin
+	declare order_cnt int;
+	#select date;
+	select count(distinct order1.order_id) into order_cnt from order1 inner join order_detail 
+	     on order1.order_id = order_detail.order_id and date = order1.order_date group by order_date;
+	return (order_cnt);
+end$
+
+select day_wise_cnt_order('2001-1-1') 'No. of customers in a particular day'$
+
+select order_id,count(distinct order_id) as cnt from order_detail ;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------
+
+(7)
+
+Delimiter $
+drop procedure cust_wise_bill_detail$
+create procedure cust_wise_bill_detail(in c_id int)
+begin
+	select distinct cust_id,cust_name,order_id from bill_detail where c_id = cust_id;
+	select prod_id, prod_qty, prod_price, prod_total_price,
+		order_total_price from bill_detail where c_id = cust_id;
+	select offer_disc,max(order_total_price),bill_total_price from bill_detail where c_id = cust_id;
+
+	
+end$	
+
+call cust_wise_bill_detail(3)$
+
+------------------------------------------------------------------------------------------------------------------------------
+
+(8)
+
+
+Delimiter $
+drop procedure payment$
+create procedure payment(in b_id int, in pay_mode varchar(20))
+begin
+	declare cid,oid int;
+	declare btp double;
+	declare disc float;
+	declare note varchar(40);
+	declare bdate date;
+	declare pm_amount double;
+
+
+	select bill_total_price into btp from bill_detail where b_id = bill_id;
+
+	select cust_id into cid from bill_detail where b_id = bill_id;
+
+	select order_id into oid from bill_detail where b_id = bill_id;
+
+	select bill_date into bdate from bill_detail where b_id = bill_id;
+
+	if btp >1000 then
+		if pay_mode = 'cc' then
+			set disc = 10;	
+			set note = 'Remain valid till 5 days!!';
+			select disc 'Discount' ;
+			select note 'Note';
+
+		elseif pay_mode = 'cod' then
+			set disc = 5;	
+			set note = 'Remain valid till 3 days!!';
+			select disc 'Discount' ;
+			select note 'Note';
+	
+		else
+			set disc = 0;	
+			set note = 'No Discount';
+
+		end if;
+	end if;
+
+	set pm_amount = btp - (btp*disc/100);
+
+	insert into payment(pay_mode,pay_date,pay_disc,pay_amount,bill_id,order_id,cust_id) values(pay_mode,bdate,disc,pm_amount,b_id,oid,cid);
+end$
+
+call payment(40, 'cc')$
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+(9)
+
+Delimiter $
+drop trigger pay_status$
+create trigger pay_status after insert on payment
+for each row
+begin
+	
+	update bill_detail set pay_status = 'Paid' where bill_id = new.bill_id;
+
+end$
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+(10)
+
+Delimiter $
+drop procedure pay_mode$
+create procedure pay_mode()
+      begin
+      declare cnt int;
+    
+      select count(pay_mode) into cnt from payment group by pay_mode order by count(pay_mode) desc limit 1;
+    
+      select pay_mode, count(pay_mode) from payment group by pay_mode having count(pay_mode) = cnt order by count(pay_mode);
+end$ 
+
+call pay_mode$	
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+(11)
+
+Delimiter $
+drop procedure highest_sell$
+create procedure highest_sell(in from_date date,in to_date date)
+begin
+	declare o_date date;
+	declare b,cnt int;
+	declare cur1 cursor for select order_date from order1,order_detail where 
+		order1.order_id = order_detail.order_id and order_date >= from_date and order_date <= to_date;
+	declare continue handler for not found set b = 1;
+	open cur1;
+	set b = 0;
+	fetch cur1 into o_date;
+	select order_id,prod_id,prod_qty from order_detail;
+
+	select sum(order_detail.prod_qty) into cnt from order_detail,product where order_detail.prod_id = product.prod_id 
+		group by order_detail.prod_id order by sum(order_detail.prod_qty) desc limit 1;
+
+
+	select order_detail.prod_id as 'Product ID', product.prod_name as 'Product Name', 
+		sum(order_detail.prod_qty) as 'Maximum quantity sold' from order_detail,product 
+		where order_detail.prod_id = product.prod_id group by order_detail.prod_id 
+		having sum(order_detail.prod_qty) = cnt order by sum(order_detail.prod_qty);
+
+	close cur1;
+	
+end$
+
+call highest_sell('2000-02-02','2002-02-02')$
+
+
+--------------------------------------------------------------------------------------------------------------------------------------
+
+(12)
+
+delimiter $
+drop trigger qty_return$
+create trigger qty_return after insert on order_return
+for each row
+begin
+  	declare p_qty int;
+
+	select prod_qty into p_qty from order_detail where order_detail.order_id = new.order_id and order_detail.prod_id = new.prod_id;
+	
+    	update product set prod_qty = prod_qty + p_qty where prod_id = new.prod_id; 
+
+	select new.cust_id , count(new.cust_id) from order_return group by new.cust_id order by count(new.cust_id) desc limit 1;
+end$
+
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (18,1,'2014-02-02',1,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (18,2,'2014-03-02',2,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,1,'2014-01-01',1,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,2,'2015-02-02',2,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,3,'2015-03-03',3,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,5,'2012-02-02',5,20)$
+
+
+select cust_id,count(cust_id) from order_return group by cust_id order by count(cust_id) desc limit 1,1$
+
+----------------------------------------------------------------------------------------------------------------------------
+
+(13)
+
+
+Delimiter $
+drop procedure highest_prod_return$
+create procedure highest_prod_return()
+begin
+	
+	declare cnt int;
+
+	select count(prod_id) into cnt from order_return group by prod_id order by count(prod_id) desc limit 1;
+	select prod_id, count(prod_id) from order_return group by prod_id having count(prod_id) = cnt order by count(prod_id);
+
+end$
+
+call highest_prod_return$
+
+
+select prod_id, count(prod_id) from order_return group by prod_id order by count(prod_id) desc limit 1;
+select prod_id, count(prod_id) from order_return group by prod_id order by count(prod_id) having count(prod_id) = count;
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+
+(14)
+
+insert into shopping_cart(prod_id, cust_id) values(1, 1)$
+insert into shopping_cart(prod_id, cust_id) values(1, 2)$
+insert into shopping_cart(prod_id, cust_id) values(1, 3)$
+insert into shopping_cart(prod_id, cust_id) values(2, 1)$
+insert into shopping_cart(prod_id, cust_id) values(2, 2)$
+
+
+Delimiter $
+drop procedure manage_shopping_cart$
+create procedure manage_shopping_cart(in pid int, in cid int)
+begin
+	delete from shopping_cart where prod_id = pid and cust_id = cid;
+	
+end$
+
+----------------------------------------------------------------------------------------------------------------------------
+
+(15)
+
+
+Delimiter $
+drop procedure orderdetail$
+create procedure orderdetail()
+begin
+	declare b int;
+	declare odate date;
+	declare cur1 cursor for select order1.order_date from order1 inner join order_detail
+		 on order1.order_id= order_detail.order_id group by order_detail.order_id order by order1.order_date;
+	declare continue handler for not found set b = 1;
+	open cur1;
+	set b = 0;
+	fetch cur1 into odate;
+	while b = 0 do
+		
+		select extract(year from odate);
+		select extract(month from odate);
+		select * from order1 inner join order_detail on order1.order_id = order_detail.order_id 
+			where order1.order_date = odate;
+		fetch cur1 into odate;
+	end while;
+	close cur1;
+end$
+
+call orderdetail$
+----------------------------------------------------------------------------------------------------------------------------
+
+(16)
+
+Delimiter $
+drop procedure top3_customers_based_on_order$
+create procedure top3_customers_based_on_order()
+begin
+	declare count int;
+	select distinct order1.cust_id, customer.cust_name, count(order_detail.order_id) as count from order1,customer,order_detail 
+		where order1.order_id = order_detail.order_id and customer.cust_id = order1.cust_id  
+		group by order1.cust_id order by count(order_detail.order_id) desc limit 3;
+end$
+
+call top3_customers_based_on_order$
+----------------------------------------------------------------------------------------------------------------------------
+
+(17)	
+
+Delimiter $	
+drop procedure top3_customers_based_on_amount$
+create procedure top3_customers_based_on_amount()
+begin
+	select distinct order1.cust_id, customer.cust_name, total_amt from order1, order_detail, customer 
+		where order1.order_id = order_detail.order_id and customer.cust_id = order1.cust_id order by total_amt desc limit 3;
+	
+end$
+
+call top3_customers_based_on_amount$
