@@ -1,0 +1,90 @@
+TRIGGERS
+-----------------------------------------------------------------------------------------------------------------------------
+(1)
+
+delimiter $
+drop trigger err_ins1$
+create trigger err_ins1 after insert on order_detail
+for each row
+begin    
+	
+	declare c_id int;
+		
+     	update order1 set total_amt = total_amt + new.prod_total_price where order_id=new.order_id;
+     	update product set prod_qty = prod_qty - new.prod_qty where prod_id = new.prod_id;
+
+	select cust_id into c_id from order1 where order1.order_id = new.order_id;
+
+     	call manage_shopping_cart(new.prod_id, c_id);
+end$
+
+call insert_order_detail(20,1,1)$	
+
+select * from bill_detail$
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+(2)
+
+delimiter $
+drop trigger err_ins2$
+create trigger err_ins2 before insert on order_detail
+for each row
+begin
+    
+	declare msg varchar(128);
+  	declare p_qty int;
+
+	select distinctrow product.prod_qty into p_qty from product inner join order_detail on new.prod_id = product.prod_id; 
+    	#set pid = select prod_id from product where prod_id = new.prod_id;
+    	if p_qty < new.prod_qty then
+       		set msg = 'Not enough quantity.....';
+	elseif new.prod_qty < 0 then
+		set msg = 'Quantity can not be negative.....';
+	end if;
+       		signal sqlstate '45001' set message_text = msg; 
+end$
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+(3)
+
+Delimiter $
+drop trigger pay_status$
+create trigger pay_status after insert on payment
+for each row
+begin
+	
+	update bill_detail set pay_status = 'Paid' where bill_id = new.bill_id;
+
+end$
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+(4)
+
+delimiter $
+drop trigger qty_return$
+create trigger qty_return after insert on order_return
+for each row
+begin
+  	declare p_qty int;
+
+	select prod_qty into p_qty from order_detail where order_detail.order_id = new.order_id and order_detail.prod_id = new.prod_id;
+	
+    	update product set prod_qty = prod_qty + p_qty where prod_id = new.prod_id; 
+
+	select new.cust_id , count(new.cust_id) from order_return group by new.cust_id order by count(new.cust_id) desc limit 1;
+end$
+
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (18,1,'2014-02-02',1,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (18,2,'2014-03-02',2,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,1,'2014-01-01',1,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,2,'2015-02-02',2,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,3,'2015-03-03',3,20)$
+insert into order_return(order_id,cust_id,return_date,prod_id,return_amount) values (20,5,'2012-02-02',5,20)$
+
+
+select cust_id,count(cust_id) from order_return group by cust_id order by count(cust_id) desc limit 1,1$
+
+----------------------------------------------------------------------------------------------------------------------------

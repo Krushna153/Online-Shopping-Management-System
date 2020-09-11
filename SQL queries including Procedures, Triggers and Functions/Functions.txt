@@ -1,0 +1,20 @@
+FUNCTION
+-----------------------------------------------------------------------------------------------------------------------------
+(1)
+
+Delimiter $
+drop function day_wise_cnt_order$
+create function day_wise_cnt_order(date date) returns int
+begin
+	declare order_cnt int;
+	#select date;
+	select count(distinct order1.order_id) into order_cnt from order1 inner join order_detail 
+	     on order1.order_id = order_detail.order_id and date = order1.order_date group by order_date;
+	return (order_cnt);
+end$
+
+select day_wise_cnt_order('2001-1-1') 'No. of customers in a particular day'$
+
+select order_id,count(distinct order_id) as cnt from order_detail ;
+
+-----------------------------------------------------------------------------------------------------------------------------
