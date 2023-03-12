@@ -1,7 +1,6 @@
 # Online-Shopping-Management-System
-In this Database Management System project,customers can buy products online and the administrator can enter the name and generate the receipt of the purchased product. 
-Administrator can view the yearly, monthly and daily reports of the products like, year wise order details, day wise placed orders, maximum payment mode used by customers,
-over all order details. 
+In this Database Management System project, customers can buy products online and the administrator can enter the name and generate the receipt of the purchased product. 
+Administrator can view the yearly, monthly and daily reports of the products like, year wise order details, day wise placed orders, maximum payment mode used by customers, overall order details. 
 Orders which are placed by the customers, will store into the database and according to the order detail, bill will be generated and the payment will be paid by the customer.
 
 ## Code
